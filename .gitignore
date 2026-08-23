@@ -1,0 +1,29 @@
+# build directory
+build/
+
+# executable
+*.exe
+*.out
+
+# object files
+*.o
+*.obj
+
+# libraries
+*.lib
+*.a
+*.dll
+*.so
+*.dylib
+
+# cmake generated
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# vscode
+.vscode/
+*.code-workspace
+compile_flags.txt
