@@ -26,7 +26,7 @@
 #include <vector>
 
 /* SNAP *******************************
- *     version 1.0                    *
+ *     version 1.1                    *
  *                                    *
  *     made by Azkey                  *
  **************************************/
@@ -66,7 +66,7 @@ using BuiltInFlag = bool BuiltInConfig::*;
 template<class BI>
 concept BuiltIn = requires (const App& app) {
     { BI::enabled } -> std::same_as<bool BuiltInConfig::* const&>;
-    { BI::name } -> std::same_as<const std::string&>;
+    { BI::name } -> std::same_as<const std::string_view&>;
     BI::object;
     BI::execute(app);
 };
@@ -349,7 +349,7 @@ class FullParser {
 struct Help
 {
     static constexpr BuiltInFlag enabled{&BuiltInConfig::help};
-    static constexpr std::string name{"HELP"};
+    static constexpr std::string_view name{"HELP"};
     inline static const auto object{
         Arg<bool>("HELP")
             .shorter('h')
@@ -376,7 +376,7 @@ private:
 struct Version
 {
     static constexpr BuiltInFlag enabled{&BuiltInConfig::version};
-    static constexpr std::string name{"VERSION"};
+    static constexpr std::string_view name{"VERSION"};
     inline static const auto object{
         Arg<bool>("VERSION")
             .shorter('V')
@@ -910,6 +910,27 @@ Option<T, N>::call_() noexcept
 }
 
 template <class T, ArgSizeT N>
+std::expected<void, SnapError>
+Option<T, N>::parse_(std::string_view carg) noexcept
+{
+	std::expected<T, std::string> result = this->parser_(carg);
+	if (!result) {
+		return std::unexpected(SnapError{
+			.what{result.error()},
+			.who {this->name_}
+			});
+	}
+	if (this->values_.full()) [[unlikely]] {
+		return std::unexpected(SnapError{
+			.what{"Too many arguments"},
+			.who {this->name_}
+			});
+	}
+	this->values_.emplace_back(*result);
+	return save_();
+}
+
+template <class T, ArgSizeT N>
 constexpr bool Option<T, N>::does_require_value_() const noexcept
 { return requires_value; }
 
@@ -1330,7 +1351,7 @@ template<BuiltIn BI>
 void App::execute_builtin_()
 {
     if (!(biconfig_.*BI::enabled)) return;
-    if (*(name_map_.at(BI::name))) BI::execute(*this);
+    if (*(name_map_.at(std::string{ BI::name }))) BI::execute(*this);
 }
 
 template<BuiltIn... BIs>
