@@ -26,7 +26,7 @@
 #include <vector>
 
 /* SNAP *******************************
- *     version 1.1                    *
+ *     version 1.2                    *
  *                                    *
  *     made by Azkey                  *
  **************************************/
@@ -302,6 +302,9 @@ class FullParser {
     try_parse(std::span<std::string_view> args) noexcept;
 
     std::expected<void, SnapError>
+    try_parse(std::span<char* const> args) noexcept;
+
+    std::expected<void, SnapError>
     register_positionals() noexcept;
 
     std::optional<IArg*> current_opt_;
@@ -407,8 +410,12 @@ public:
     using ParseResult = std::unordered_map<std::string, IArg*>;
     std::expected<std::unordered_map<std::string, IArg*>, SnapError>
     try_parse(std::span<std::string_view> args) noexcept;
+    std::expected<std::unordered_map<std::string, IArg*>, SnapError>
+    try_parse(int argc, char** argv) noexcept;
     std::unordered_map<std::string, IArg*>
     parse(std::span<std::string_view> args);
+    std::unordered_map<std::string, IArg*>
+    parse(int argc, char** argv);
     
     /* Getters */
     std::string_view get_name() const noexcept;
@@ -479,7 +486,7 @@ inline std::string SnapError::to_string() const
 template <class T>
 auto IArg::view() const
 {
-    return std::any_cast<Continuous<T>::const_subrange>(
+    return std::any_cast<typename Continuous<T>::const_subrange>(
         impl_view_());
 }
 
@@ -1140,6 +1147,32 @@ FullParser::try_parse(std::span<std::string_view> args) noexcept {
     return {};
 }
 
+inline std::expected<void, SnapError>
+FullParser::try_parse(std::span<char* const> args) noexcept {
+    current_pos_ = app_ref_.positionals_.begin();
+    stage_positionals_();
+
+    for (auto pc : args) {
+        auto result = parse_arg_(std::string_view{pc});
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+    }
+
+    /* forall unfinished fill and if not ok, error */
+    for (auto& [ia, ok] : unfinished_) {
+        if (!ok) {
+            return std::unexpected(SnapError{
+                .what{"Not enough arguments"},
+                .who {std::string{ia->name()}}
+                });
+        }
+        ia->apply_defaults_();
+    }
+
+    return {};
+}
+
 constexpr App::App(std::string_view name) noexcept :
     name_(std::string{name})
 {}
@@ -1164,7 +1197,7 @@ constexpr App& App::author(std::string_view app_author) noexcept
 
 template<class T, ArgSizeT N>
 constexpr App& App::arg(Arg<T, N> obj) {
-    std::string name = obj.name();
+    std::string name = std::string{ obj.name() };
 
     IArg* ptr = register_arg_(obj);
 
@@ -1261,10 +1294,32 @@ App::try_parse(std::span<std::string_view> args) noexcept
     return name_map_;
 }
 
+inline std::expected<std::unordered_map<std::string, IArg*>, SnapError>
+App::try_parse(int argc, char** argv) noexcept
+{
+    std::span<char* const> args{ argv, static_cast<std::size_t>(argc) };
+    register_builtins_<Help, Version>();
+    auto result = FullParser{ *this }.try_parse(args.subspan(1));
+    if (!result) return std::unexpected(result.error());
+    execute_builtins_<Help, Version>();
+    return name_map_;
+}
+
 inline std::unordered_map<std::string, IArg*>
 App::parse(std::span<std::string_view> args)
 {
     auto result = try_parse(args);
+    if (!result) {
+        std::cerr << result.error().to_string() << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+    return *result;
+}
+
+inline std::unordered_map<std::string, IArg*>
+App::parse(int argc, char** argv)
+{
+    auto result = try_parse(argc, argv);
     if (!result) {
         std::cerr << result.error().to_string() << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1351,7 +1406,11 @@ template<BuiltIn BI>
 void App::execute_builtin_()
 {
     if (!(biconfig_.*BI::enabled)) return;
-    if (*(name_map_.at(std::string{ BI::name }))) BI::execute(*this);
+    if (*(name_map_.at(std::string{ BI::name })))
+    {
+        BI::execute(*this);
+        std::exit(EXIT_SUCCESS);
+    }
 }
 
 template<BuiltIn... BIs>
@@ -1465,9 +1524,9 @@ inline void Help::Context_::print_usage_() const noexcept
 {
     using namespace std;
     cout << "USAGE:\n";
-    cout << "\t" << app_.get_name() << " ";
+    cout << "    " << app_.get_name() << " ";
     if (has_options_())
-        cout << "[OPTIONS]";
+        cout << "[OPTIONS] ";
     for (const IArg* const argp : app_.get_positionals()) {
         cout << argp->format_help().usage;
     }
@@ -1499,7 +1558,7 @@ inline std::string Help::Context_::print_options_format_() const noexcept
         })
     );
 
-    string fmt = "\t{:<" + to_string(maxw) + "}\t{}\n";
+    string fmt = "    {:<" + to_string(maxw) + "}  {}\n";
     return fmt;
 }
 
