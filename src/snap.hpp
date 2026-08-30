@@ -26,7 +26,7 @@
 #include <vector>
 
 /* SNAP *******************************
- *     version 1.3                    *
+ *     version 1.4                    *
  *                                    *
  *     made by Azkey                  *
  **************************************/
@@ -1332,9 +1332,9 @@ App::try_parse(std::span<std::string_view> args) noexcept
 {
     register_builtins_<Help, Version>();
     auto result = FullParser{*this}.try_parse(args);
-    if (!result) return std::unexpected(result.error());
     /* built-inの実行までやる */
     execute_builtins_<Help, Version>();
+    if (!result) return std::unexpected(result.error());
     return name_map_;
 }
 
@@ -1344,8 +1344,8 @@ App::try_parse(int argc, char** argv) noexcept
     std::span<char* const> args{ argv, static_cast<std::size_t>(argc) };
     register_builtins_<Help, Version>();
     auto result = FullParser{ *this }.try_parse(args.subspan(1));
-    if (!result) return std::unexpected(result.error());
     execute_builtins_<Help, Version>();
+    if (!result) return std::unexpected(result.error());
     return name_map_;
 }
 
