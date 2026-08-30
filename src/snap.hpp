@@ -26,7 +26,7 @@
 #include <vector>
 
 /* SNAP *******************************
- *     version 1.2                    *
+ *     version 1.3                    *
  *                                    *
  *     made by Azkey                  *
  **************************************/
@@ -304,9 +304,6 @@ class FullParser {
     std::expected<void, SnapError>
     try_parse(std::span<char* const> args) noexcept;
 
-    std::expected<void, SnapError>
-    register_positionals() noexcept;
-
     std::optional<IArg*> current_opt_;
     ArgIterator current_pos_;
     IArg* get_current() noexcept;
@@ -397,14 +394,23 @@ public:
 
     /* Builder */
     constexpr App(std::string_view name) noexcept;
-    constexpr App& about(std::string_view description) noexcept;
-    constexpr App& version(std::string_view app_version) noexcept;
-    constexpr App& author(std::string_view app_author) noexcept;
+    constexpr App& about(std::string_view description) & noexcept;
+    constexpr App& version(std::string_view app_version) & noexcept;
+    constexpr App& author(std::string_view app_author) & noexcept;
     template<class T, ArgSizeT N>
-    constexpr App& arg(Arg<T, N> obj);
+    constexpr App& arg(Arg<T, N> obj) &;
     template<class T, ArgSizeT N>
-    constexpr App& arg(Option<T, N> obj);
-    constexpr App& builtins(BuiltInConfig biconfig) noexcept;
+    constexpr App& arg(Option<T, N> obj) &;
+    constexpr App& builtins(BuiltInConfig biconfig) & noexcept;
+
+    constexpr App&& about(std::string_view description) && noexcept;
+    constexpr App&& version(std::string_view app_version) && noexcept;
+    constexpr App&& author(std::string_view app_author) && noexcept;
+    template<class T, ArgSizeT N>
+    constexpr App&& arg(Arg<T, N> obj) &&;
+    template<class T, ArgSizeT N>
+    constexpr App&& arg(Option<T, N> obj) &&;
+    constexpr App&& builtins(BuiltInConfig biconfig) && noexcept;
 
     /* User use */
     using ParseResult = std::unordered_map<std::string, IArg*>;
@@ -1177,26 +1183,26 @@ constexpr App::App(std::string_view name) noexcept :
     name_(std::string{name})
 {}
 
-constexpr App& App::about(std::string_view description) noexcept
+constexpr App& App::about(std::string_view description) & noexcept
 {
     about_ = std::string{description};
     return *this;
 }
 
-constexpr App& App::version(std::string_view app_version) noexcept
+constexpr App& App::version(std::string_view app_version) & noexcept
 {
     version_ = std::string{app_version};
     return *this;
 }
 
-constexpr App& App::author(std::string_view app_author) noexcept
+constexpr App& App::author(std::string_view app_author) & noexcept
 {
     author_ = std::string{app_author};
     return *this;
 }
 
 template<class T, ArgSizeT N>
-constexpr App& App::arg(Arg<T, N> obj) {
+constexpr App& App::arg(Arg<T, N> obj) & {
     std::string name = std::string{ obj.name() };
 
     IArg* ptr = register_arg_(obj);
@@ -1209,7 +1215,7 @@ constexpr App& App::arg(Arg<T, N> obj) {
 }
 
 template<class T, ArgSizeT N>
-constexpr App& App::arg(Option<T, N> obj) {
+constexpr App& App::arg(Option<T, N> obj) & {
     std::string name = std::string{obj.name()};
     auto shorter = obj.keys().shorter;
     auto longer = obj.keys().longer;
@@ -1225,10 +1231,48 @@ constexpr App& App::arg(Option<T, N> obj) {
     return *this;
 }
 
-constexpr App& App::builtins(BuiltInConfig biconfig) noexcept
+constexpr App& App::builtins(BuiltInConfig biconfig) & noexcept
 {
     biconfig_ = biconfig;
     return *this;
+}
+
+constexpr App&& App::about(std::string_view description) && noexcept
+{
+    static_cast<App&>(*this).about(description);
+    return std::move(*this);
+}
+
+constexpr App&& App::version(std::string_view app_version) && noexcept
+{
+    static_cast<App&>(*this).version(app_version);
+    return std::move(*this);
+}
+
+constexpr App&& App::author(std::string_view app_author) && noexcept
+{
+    static_cast<App&>(*this).author(app_author);
+    return std::move(*this);
+}
+
+template<class T, ArgSizeT N>
+constexpr App&& App::arg(Arg<T, N> obj)&&
+{
+    static_cast<App&>(*this).arg(obj);
+    return std::move(*this);
+}
+
+template<class T, ArgSizeT N>
+constexpr App&& App::arg(Option<T, N> obj)&&
+{
+    static_cast<App&>(*this).arg(obj);
+    return std::move(*this);
+}
+
+constexpr App&& App::builtins(BuiltInConfig biconfig) && noexcept
+{
+    static_cast<App&>(*this).builtins(biconfig);
+    return std::move(*this);
 }
 
 template<class T>
