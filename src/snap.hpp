@@ -26,7 +26,7 @@
 #include <vector>
 
 /* SNAP *******************************
- *     version 1.4                    *
+ *     version 1.5                    *
  *                                    *
  *     made by Azkey                  *
  **************************************/
@@ -1054,6 +1054,7 @@ FullParser::process_long_(std::string_view keyval) noexcept
 inline std::expected<void, SnapError>
 FullParser::process_value_(std::string_view value) noexcept
 {
+    if (value.empty()) return {};
     IArg* current_arg = get_current();
     if (!current_arg) {
         return std::unexpected(SnapError{
@@ -1506,24 +1507,32 @@ default_parser( std::string_view sv )
     {
         T value{};
         std::string_view nameT = typeid(T).name();
-        auto [ptr, ec] = std::from_chars(sv.begin(), sv.end(), value);
+        auto [ptr, ec] = std::from_chars(
+            sv.data(),
+            sv.data() + sv.size(),
+            value
+        );
+
         if( ec == std::errc::invalid_argument ){
-            return std::vformat(
+            std::string estr =  std::vformat(
                 "Invalid argument({}): {}\n",
                 std::make_format_args(nameT, sv)
             );
+            return std::unexpected(estr);
         }
         if( ec == std::errc::result_out_of_range ){
-            return std::vformat(
+            std::string estr = std::vformat(
                 "Out of range({}): {}\n",
                 std::make_format_args(nameT, sv)
             );
+            return std::unexpected(estr);
         }
-        if( ptr != sv.end() ){
-            return std::vformat(
+        if( ptr != sv.data() + sv.size() ){
+            std::string estr = std::vformat(
                 "Invalid argument({}): {}\n",
                 std::make_format_args(nameT, sv)
             );
+            return std::unexpected(estr);
         }
         return value;
     }
