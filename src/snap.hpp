@@ -26,7 +26,7 @@
 #include <vector>
 
 /* SNAP *******************************
- *     version 1.6                    *
+ *     version 1.7                    *
  *                                    *
  *     made by Azkey                  *
  **************************************/
@@ -112,13 +112,13 @@ protected:
     virtual bool finished_() const noexcept = 0;
 
     virtual void apply_defaults_() noexcept = 0;
-    virtual std::any impl_view_() const = 0;
+    virtual std::any impl_values_() const = 0;
     virtual bool is_enabled_() const noexcept = 0;
 
 public:
     virtual ~IArg() = default;
     template<class T>
-    auto view() const;
+    auto values() const;
     explicit operator bool() const noexcept;
     virtual ArgHelpFormat format_help() const noexcept = 0;
 
@@ -128,23 +128,20 @@ public:
 
 template <class T, ArgSizeT N>
 class Continuous {
-private:
-    using _DataType = std::vector<T>;
-    _DataType data_{};
-
 public:
+    using DataType = std::vector<T>;
     constexpr static bool is_dynamic{N == dynamic};
 
     constexpr Continuous() noexcept;
 
-    using iterator = typename _DataType::iterator;
-    using const_iterator = typename _DataType::const_iterator;
+    using iterator = typename DataType::iterator;
+    using const_iterator = typename DataType::const_iterator;
     constexpr iterator begin() noexcept;
     constexpr iterator end()   noexcept;
     constexpr const_iterator begin() const noexcept;
     constexpr const_iterator end() const noexcept;
 
-    using const_reference = typename _DataType::const_reference;
+    using const_reference = typename DataType::const_reference;
     constexpr const_reference front() const;
     constexpr const_reference at(std::size_t index) const;
 
@@ -159,8 +156,10 @@ public:
     constexpr bool empty() const noexcept;
     constexpr bool full() const noexcept;
 
-    using const_subrange = std::ranges::subrange<const_iterator>;
-    const_subrange to_const_subrange() const;
+    const DataType& vector_data() const noexcept;
+
+private:
+    DataType data_{};
 };
 
 template <class T, ArgSizeT N>
@@ -247,7 +246,7 @@ protected:
     bool finished_() const noexcept override;   // completed
 
     void apply_defaults_() noexcept override;
-    std::any impl_view_() const override;
+    std::any impl_values_() const override;
 };
 
 struct OptionKey {
@@ -288,6 +287,8 @@ private:
 
     constexpr bool does_require_value_() const noexcept override;
     bool is_enabled_() const noexcept override;
+
+    std::any impl_values_() const override;
 };
 
 class FullParser {
@@ -490,10 +491,11 @@ inline std::string SnapError::to_string() const
 }
 
 template <class T>
-auto IArg::view() const
+auto IArg::values() const
 {
-    return std::any_cast<typename Continuous<T>::const_subrange>(
-        impl_view_());
+    using DataType = typename Continuous<T>::DataType;
+    using value_ref = std::reference_wrapper<const DataType>;
+    return std::any_cast<value_ref>(impl_values_()).get();
 }
 
 inline IArg::operator bool() const noexcept
@@ -571,9 +573,9 @@ constexpr bool Continuous<T, N>::full() const noexcept
 { return (size() == N) && !is_dynamic; }
 
 template <class T, ArgSizeT N>
-Continuous<T, N>::const_subrange
-Continuous<T, N>::to_const_subrange() const
-{ return const_subrange{begin(), end()}; }
+const Continuous<T, N>::DataType&
+Continuous<T, N>::vector_data() const noexcept
+{ return data_; }
 
 template <class T, ArgSizeT N>
 constexpr Arg<T, N>::Arg(std::string_view name) noexcept :
@@ -800,8 +802,8 @@ void Arg<T, N>::apply_defaults_() noexcept
 }
 
 template <class T, ArgSizeT N>
-std::any Arg<T, N>::impl_view_() const
-{ return values_.to_const_subrange(); }
+std::any Arg<T, N>::impl_values_() const
+{ return std::cref(values_.vector_data()); }
 
 template <class T, ArgSizeT N>
 constexpr Option<T, N>::Option(Arg<T, N>&& arg) noexcept :
@@ -961,6 +963,18 @@ bool Option<T, N>::is_enabled_() const noexcept
         bool initial_val = defs.empty() ? false : defs.front();
         return this->is_called_ != initial_val;
     }
+}
+
+template <class T, ArgSizeT N>
+std::any Option<T, N>::impl_values_() const
+{
+    if (this->is_called_)
+        return std::cref(this->values_.vector_data());
+    if (this->defaults_.full())
+        return std::cref(this->defaults_.vector_data());
+    throw std::logic_error(
+        "Cannot retrieve value: Option not specified"
+    );
 }
 
 inline FullParser::FullParser(App& app) : app_ref_(app) {}
