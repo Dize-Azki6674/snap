@@ -26,7 +26,7 @@
 #include <vector>
 
 /* SNAP *******************************
- *     version 1.5                    *
+ *     version 1.6                    *
  *                                    *
  *     made by Azkey                  *
  **************************************/
@@ -595,7 +595,10 @@ template <class T, ArgSizeT N>
 constexpr Option<T, N>
 Arg<T, N>::longer(std::string_view long_key) noexcept
 requires (!is_dynamic)
-{ return Option<T, N>{std::move(*this)}.longer(long_key); }
+{
+    std::string long_key_{ long_key };
+    return Option<T, N>{std::move(*this)}.longer(long_key_);
+}
 
 template <class T, ArgSizeT N>
 constexpr Option<T, N>
@@ -847,36 +850,37 @@ constexpr const OptionKey& Option<T, N>::keys() const noexcept
 template <class T, ArgSizeT N>
 ArgHelpFormat Option<T, N>::format_help() const noexcept
 {
+    ArgHelpFormat ahf{
+        .usage{},
+        .about{this->about_}
+    };
     std::string usage{};
     if (keys_.shorter) {
-        usage += '-';
-        usage += *keys_.shorter;
+        ahf.usage += '-';
+        ahf.usage += *keys_.shorter;
     } else {
-        usage += "  ";
+        ahf.usage += "  ";
     }
 
-    usage += (keys_.shorter && keys_.longer) ? ", " : "  ";
+    ahf.usage += (keys_.shorter && keys_.longer) ? ", " : "  ";
 
     if (keys_.longer) {
-        usage += "--";
-        usage += *keys_.longer;
+        ahf.usage += "--" + (*keys_.longer);
     }
 
-    usage += " ";
+    if constexpr (!requires_value) return ahf;
+
+    ahf.usage += " ";
 
     int i;
     int required = this->value_names_.size() - this->defaults_.size();
     for (i = 0; i < required; i++) {
-        usage += "<";
-        usage += this->value_names_.at(i);
-        usage += "> ";
+        ahf.usage += "<" + this->value_names_.at(i) + "> ";
     }
     for (i = required; i < this->value_names_.size(); i++) {
-        usage += "[";
-        usage += this->value_names_.at(i);
-        usage += "] ";
+        ahf.usage += "[" + this->value_names_.at(i) + "] ";
     }
-    return {.usage{usage}, .about{this->about_}};
+    return ahf;
 }
 
 template <class T, ArgSizeT N>
@@ -1591,6 +1595,8 @@ inline void Help::Context_::print_options_() const noexcept
     using namespace std;
     if (!has_options_())
         return;
+
+    cout << "OPTIONS:\n";
     
     for (const IArg* const argp : app_.get_options()) {
         auto hf = argp->format_help();
