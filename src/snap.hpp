@@ -26,7 +26,7 @@
 #include <vector>
 
 /* SNAP *******************************
- *     version 1.7                    *
+ *     version 1.8                    *
  *                                    *
  *     made by Azkey                  *
  **************************************/
@@ -187,25 +187,25 @@ public:
     constexpr Option<T, N> on_duplicate(Behavior behavior)
         noexcept requires (!is_dynamic);
     constexpr auto entry(
-        this auto& self,
+        this auto&& self,
         std::string_view value_name)
         -> decltype(self);
-    constexpr auto entry(this auto& self) -> decltype(self);
+    constexpr auto entry(this auto&& self) -> decltype(self);
     constexpr auto entry(
-        this auto& self,
+        this auto&& self,
         std::string_view value_name,
         T default_value)
         -> decltype(self)
         requires (!is_dynamic);
     constexpr auto def(
-        this auto& self,
+        this auto&& self,
         T default_value)
         -> decltype(self)
         requires (N == 1);
-    constexpr auto parser(this auto& self, Parser parser) noexcept
+    constexpr auto parser(this auto&& self, Parser parser) noexcept
         -> decltype(self);
     constexpr auto
-        help(this auto& self, std::string_view about) noexcept
+        help(this auto&& self, std::string_view about) noexcept
         -> decltype(self);
     
     /* Getters */
@@ -616,7 +616,7 @@ requires (!is_dynamic)
 template <class T, ArgSizeT N>
 constexpr auto
 Arg<T, N>::entry(
-    this auto& self,
+    this auto&& self,
     std::string_view value_name)
     -> decltype(self)
 {
@@ -625,18 +625,18 @@ Arg<T, N>::entry(
         throw std::logic_error("Arg::entry");
     }
     self.append_entry_name_(value_name);
-    return self;
+    return std::forward<decltype(self)>(self);
 }
 
 template <class T, ArgSizeT N>
 constexpr auto
-Arg<T, N>::entry(this auto& self) -> decltype(self)
+Arg<T, N>::entry(this auto&& self) -> decltype(self)
 { return self.entry(self.name_); }
 
 template <class T, ArgSizeT N>
 constexpr auto
 Arg<T, N>::entry(
-    this auto& self,
+    this auto&& self,
     std::string_view value_name,
     T default_value)
     -> decltype(self)
@@ -644,38 +644,38 @@ Arg<T, N>::entry(
 {
     self.defaults_.emplace_back(default_value);
     self.append_entry_name_(value_name);
-    return self;
+    return std::forward<decltype(self)>(self);
 }
 
 template <class T, ArgSizeT N>
 constexpr auto
 Arg<T, N>::def(
-    this auto& self,
+    this auto&& self,
     T default_value)
     -> decltype(self)
     requires (N==1)
 {
     self.append_entry_name_(self.name_);
     self.defaults_.emplace_back(default_value);
-    return self;
+    return std::forward<decltype(self)>(self);
 }
 
 template <class T, ArgSizeT N>
 constexpr auto
-Arg<T, N>::parser(this auto& self, Parser parser) noexcept
+Arg<T, N>::parser(this auto&& self, Parser parser) noexcept
     -> decltype(self)
 {
     self.parser_ = parser;
-    return self;
+    return std::forward<decltype(self)>(self);
 }
 
 template <class T, ArgSizeT N>
 constexpr auto
-Arg<T, N>::help(this auto& self, std::string_view about) noexcept
+Arg<T, N>::help(this auto&& self, std::string_view about) noexcept
     -> decltype(self)
 {
     self.about_ = about;
-    return self;
+    return std::forward<decltype(self)>(self);
 }
 
 template <class T, ArgSizeT N>
@@ -994,6 +994,7 @@ FullParser::try_close_opt_() noexcept {
             return std::unexpected(result.error());
         }
         unfinished_.at(*current_opt_) = (*current_opt_)->ok_();
+        current_opt_ = std::nullopt;
     }
     return {};
 }
@@ -1047,10 +1048,11 @@ FullParser::process_shorts_(std::string_view keyval) noexcept
     }
     auto res = encounter_key_(keyval.front());
     if (!res) { return std::unexpected(res.error()); }
-    if ((*current_opt_)->does_require_value_()) {
-        return process_value_(keyval.substr(1));
+    if ((*current_opt_)->does_require_value_()) {   // オプションを閉じないので
+        return process_value_(keyval.substr(1));    // (短縮でも別引数でも)次の引数を受け取れる
     }
-
+    auto close = try_close_opt_();  // 値要求無し確定だから
+    assert(close);                  // 閉じるときにエラーにならない
     return process_shorts_(keyval.substr(1));
 }
 
@@ -1063,10 +1065,15 @@ FullParser::process_long_(std::string_view keyval) noexcept
     auto key_res = encounter_key_(key);
     if (!key_res) { return std::unexpected(key_res.error()); }
 
-    if (eq_pos == std::string_view::npos) { return key_res; }
-    std::string_view val = keyval.substr(eq_pos + 1);
-    auto val_res = process_value_(val);
-    return val_res;
+    if (eq_pos != std::string_view::npos)
+    {
+        std::string_view val = keyval.substr(eq_pos + 1);
+        auto val_res = process_value_(val);
+        return val_res;
+    }
+    if (!((*current_opt_)->does_require_value_()))
+        auto close = try_close_opt_();
+    return key_res;
 }
 
 inline std::expected<void, SnapError>
@@ -1138,9 +1145,8 @@ FullParser::parse_arg_(std::string_view arg) noexcept {
 inline void FullParser::stage_positionals_() noexcept
 {
     for (IArg* ptr_ia : app_ref_.positionals_) {
-        /* 位置引数に関するIArg::call_()は
-         * エラー値を返さない */
-        assert(ptr_ia -> call_());
+        auto call = ptr_ia->call_();    // 位置引数に関するIArg::call_()は
+        assert(call);                   // エラー値を返さない
         unfinished_.insert({ptr_ia, ptr_ia->ok_()});
     }
     return;
